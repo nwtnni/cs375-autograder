@@ -41,3 +41,7 @@ maketest.sh
 addToDatabase.sh
 scripts/gentest.sh
 scripts/change_year.sh
+
+# Added by cargo
+
+/target
