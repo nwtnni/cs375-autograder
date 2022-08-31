@@ -1,8 +1,11 @@
 [package]
 name = "cs375-autograder"
 version = "0.1.0"
+description = "An autograder used for CS375 Compilers at UT Austin"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0"
+clap = { version = "3.2", features = ["derive"] }
