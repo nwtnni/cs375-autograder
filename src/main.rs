@@ -1,23 +1,16 @@
+mod p1;
+
 use std::collections::BTreeMap;
-use std::env;
 use std::fs;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::BufWriter;
-use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
-use std::process;
-use std::process::Stdio;
 use std::str::FromStr;
 
-use ansi_term::Color;
 use anyhow::anyhow;
-use anyhow::Context;
 use clap::Parser;
-use difference::Changeset;
-use include_dir::include_dir;
-use include_dir::Dir;
 use zip::read::ZipArchive;
 
 #[derive(Parser)]
@@ -47,9 +40,6 @@ enum Command {
         workspace: PathBuf,
     },
 }
-
-static P1_TESTS: Dir = include_dir!("$CARGO_MANIFEST_DIR/test_p1");
-static P1_OUTPUTS: Dir = include_dir!("$CARGO_MANIFEST_DIR/sample_p1");
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum Project {
@@ -146,74 +136,7 @@ fn main() -> anyhow::Result<()> {
             workspace,
             project: Project::P1,
         } => {
-            env::set_current_dir(&workspace)?;
-
-            let mut tests = P1_TESTS.files().collect::<Vec<_>>();
-            let mut outputs = P1_OUTPUTS.files().collect::<Vec<_>>();
-
-            tests.sort_by_key(|file| file.path().file_name().unwrap());
-            outputs.sort_by_key(|file| file.path().file_name().unwrap());
-
-            match process::Command::new("make")
-                .arg("lexanc")
-                .spawn()
-                .context("Could not execute `make`")?
-                .wait()
-                .map_err(anyhow::Error::new)
-                .and_then(|status| {
-                    if status.success() {
-                        Ok(status)
-                    } else {
-                        Err(anyhow!(status))
-                    }
-                })
-                .context("Could not execute `make lexanc`")
-            {
-                Ok(_) => (),
-                Err(error) => {
-                    println!("{}", error);
-                }
-            }
-
-            for (test, output) in tests.iter().zip(&outputs) {
-                print!(
-                    "- [{}]:",
-                    test.path().file_name().unwrap().to_string_lossy()
-                );
-
-                let mut child = process::Command::new(workspace.join("lexanc"))
-                    .stdin(Stdio::piped())
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::inherit())
-                    .spawn()?;
-
-                child.stdin.as_mut().unwrap().write_all(test.contents())?;
-                let stdout = child.wait_with_output()?.stdout;
-                let actual = String::from_utf8_lossy(&stdout);
-                let actual = actual.trim();
-                let expected = output.contents_utf8().unwrap_or_default().trim();
-
-                if actual == expected {
-                    println!(" pass");
-                    continue;
-                } else {
-                    println!(" fail");
-                }
-
-                for diff in Changeset::new(expected, actual, "\n").diffs {
-                    match diff {
-                        difference::Difference::Same(_) => (),
-                        difference::Difference::Add(added) => {
-                            print!("{}", Color::Green.paint("+ "));
-                            println!("{}", Color::Green.paint(added));
-                        }
-                        difference::Difference::Rem(removed) => {
-                            print!("{}", Color::Red.paint("- "));
-                            println!("{}", Color::Red.paint(removed));
-                        }
-                    }
-                }
-            }
+            p1::grade(&workspace)?;
         }
     }
 
