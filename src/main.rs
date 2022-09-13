@@ -37,6 +37,9 @@ enum Command {
         project: Project,
 
         #[clap(short, long)]
+        verbose: bool,
+
+        #[clap(short, long)]
         workspace: PathBuf,
     },
 }
@@ -135,8 +138,9 @@ fn main() -> anyhow::Result<()> {
         Command::Grade {
             workspace,
             project: Project::P1,
+            verbose,
         } => {
-            p1::grade(&workspace)?;
+            p1::grade(&workspace, verbose)?;
         }
     }
 

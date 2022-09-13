@@ -16,7 +16,15 @@ use include_dir::Dir;
 static TESTS: Dir = include_dir!("$CARGO_MANIFEST_DIR/test_p1");
 static EXPECTEDS: Dir = include_dir!("$CARGO_MANIFEST_DIR/sample_p1");
 
-pub fn grade<P: AsRef<Path>>(workspace: P) -> anyhow::Result<()> {
+pub fn grade<P: AsRef<Path>>(workspace: P, verbose: bool) -> anyhow::Result<()> {
+    let student = workspace.as_ref().file_name().unwrap();
+
+    println!(
+        "[{}] grading in workspace {}...",
+        student.to_string_lossy(),
+        workspace.as_ref().display()
+    );
+
     env::set_current_dir(&workspace)?;
 
     let mut tests = TESTS.files().collect::<Vec<_>>();
@@ -46,17 +54,19 @@ pub fn grade<P: AsRef<Path>>(workspace: P) -> anyhow::Result<()> {
         }
     }
 
-    for (test, expected) in tests.iter().zip(&expecteds) {
-        print!(
-            "- [{}]:",
-            test.path().file_name().unwrap().to_string_lossy()
-        );
+    let mut failures = 0;
 
+    for (test, expected) in tests.iter().zip(&expecteds) {
         let differences = grade_test(test, expected)?;
+        let name = test.path().file_name().unwrap().to_string_lossy();
 
         match differences.is_empty() {
-            true => println!(" {}", Color::Green.paint("pass")),
-            false => println!(" {}", Color::Red.paint("fail")),
+            true if verbose => println!("- [{}]: {}", name, Color::Green.paint("pass")),
+            true => (),
+            false => {
+                println!("- [{}]: {}", name, Color::Red.paint("fail"));
+                failures += 1;
+            }
         }
 
         for difference in differences {
@@ -73,6 +83,13 @@ pub fn grade<P: AsRef<Path>>(workspace: P) -> anyhow::Result<()> {
             }
         }
     }
+
+    println!(
+        "[{}]: passed {} out of {}",
+        student.to_string_lossy(),
+        tests.len() - failures,
+        tests.len()
+    );
 
     Ok(())
 }
