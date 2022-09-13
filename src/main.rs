@@ -26,7 +26,6 @@ enum Command {
         skeleton: PathBuf,
 
         /// Directory to output unzipped student code, with the skeleton code.
-        #[clap(short, long)]
         workspace: PathBuf,
     },
 
@@ -39,8 +38,7 @@ enum Command {
         #[clap(short, long)]
         verbose: bool,
 
-        #[clap(short, long)]
-        workspace: PathBuf,
+        workspaces: Vec<PathBuf>,
     },
 }
 
@@ -136,11 +134,19 @@ fn main() -> anyhow::Result<()> {
         }
 
         Command::Grade {
-            workspace,
+            workspaces,
             project: Project::P1,
             verbose,
         } => {
-            p1::grade(&workspace, verbose)?;
+            for workspace in workspaces {
+                match p1::grade(&workspace, verbose) {
+                    Ok(()) => (),
+                    Err(error) => {
+                        eprintln!("Error grading workspace: {}", workspace.display());
+                        eprintln!("{}", error);
+                    }
+                }
+            }
         }
     }
 
