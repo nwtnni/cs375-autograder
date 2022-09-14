@@ -105,6 +105,12 @@ fn main() -> anyhow::Result<()> {
                 workspace.push(student);
                 fs::create_dir(&workspace)?;
 
+                for skeleton in &skeletons {
+                    workspace.push(skeleton.file_name().unwrap());
+                    fs::copy(&skeleton, &workspace)?;
+                    workspace.pop();
+                }
+
                 for (path, name) in paths {
                     workspace.push(name);
 
@@ -120,12 +126,6 @@ fn main() -> anyhow::Result<()> {
                         &mut fs::File::create(&workspace).map(BufWriter::new)?,
                     )?;
 
-                    workspace.pop();
-                }
-
-                for skeleton in &skeletons {
-                    workspace.push(skeleton.file_name().unwrap());
-                    fs::copy(&skeleton, &workspace)?;
                     workspace.pop();
                 }
 
