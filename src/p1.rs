@@ -62,10 +62,10 @@ pub fn grade<P: AsRef<Path>>(workspace: P, verbose: bool) -> anyhow::Result<()> 
         let name = test.path().file_name().unwrap().to_string_lossy();
 
         match differences.is_empty() {
-            true if verbose => println!("- [{}]: {}", name, Color::Green.paint("pass")),
+            true if verbose => println!("- [{}]: pass", name),
             true => (),
             false => {
-                println!("- [{}]: {}", name, Color::Red.paint("fail"));
+                println!("- [{}]: fail", name);
                 failures += 1;
             }
         }
@@ -119,25 +119,13 @@ fn grade_test(
     }
 
     let mut differences = Vec::new();
-    let mut overflow = false;
+    let mut overflow = None;
 
-    for (actual, expected) in actual
-        .trim_end_matches('\n')
-        .split('\n')
-        .zip(expected.trim_end_matches('\n').split('\n'))
+    let mut actuals = actual.trim_end_matches('\n').split('\n').peekable();
+    let mut expecteds = expected.trim_end_matches('\n').split('\n').peekable();
+
+    while let (Some(actual), Some(expected)) = (actuals.peek().copied(), expecteds.peek().copied())
     {
-        const STARTED: &str = "Started scanner test";
-        const OVERFLOW: &str = "out of range";
-
-        if actual.contains(STARTED) && expected.contains(STARTED) {
-            continue;
-        }
-
-        if actual.contains(OVERFLOW) && expected.contains(OVERFLOW) {
-            overflow = true;
-            continue;
-        }
-
         let expected_token = parse(expected).with_context(|| {
             anyhow!(
                 "[INTERNAL ERROR]: failed to parse expected token: {}",
@@ -145,18 +133,50 @@ fn grade_test(
             )
         })?;
 
-        match parse(actual) {
-            Some(actual_token)
-                if actual_token.equals(&expected_token, mem::take(&mut overflow)) => {}
-            _ => differences.append(&mut Changeset::new(expected, actual, "\n").diffs),
+        let different = match (expected_token, parse(actual)) {
+            (Token::Overflow(expected), Some(Token::Overflow(actual))) => {
+                if expected == actual {
+                    overflow = Some(expected);
+                    false
+                } else {
+                    true
+                }
+            }
+            (Token::Overflow(_), _) => {
+                expecteds.next();
+                true
+            }
+            (_, Some(Token::Overflow(_))) => {
+                actuals.next();
+                true
+            }
+            (expected, Some(actual)) => !expected.equals(&actual, mem::take(&mut overflow)),
+            (_, None) => true,
         };
+
+        if different {
+            differences.append(&mut Changeset::new(expected, actual, "\n").diffs);
+        }
+
+        actuals.next();
+        expecteds.next();
+    }
+
+    for actual in actuals {
+        differences.append(&mut Changeset::new("", actual, "\n").diffs);
+    }
+
+    for expected in expecteds {
+        differences.append(&mut Changeset::new(expected, "", "\n").diffs);
     }
 
     Ok(differences)
 }
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 enum Token {
+    Start,
+    Overflow(Overflow),
     Operator(u16),
     Delimiter(u16),
     Reserved(u16),
@@ -166,7 +186,7 @@ enum Token {
 }
 
 impl Token {
-    fn equals(&self, other: &Token, overflow: bool) -> bool {
+    fn equals(&self, other: &Token, overflow: Option<Overflow>) -> bool {
         match (self, other) {
             (Token::Number(left), Token::Number(right)) => left.equals(right, overflow),
             _ => self == other,
@@ -174,16 +194,23 @@ impl Token {
     }
 }
 
+#[derive(Debug, PartialEq)]
+enum Overflow {
+    Float,
+    Integer,
+}
+
+#[derive(Debug)]
 enum Number {
     Float { mantissa: f32, exponent: i32 },
     Integer(i32),
 }
 
 impl Number {
-    fn equals(&self, other: &Number, overflow: bool) -> bool {
+    fn equals(&self, other: &Number, overflow: Option<Overflow>) -> bool {
         match (self, other, overflow) {
-            (Number::Float { .. }, Number::Float { .. }, true) => true,
-            (Number::Integer(_), Number::Integer(_), true) => true,
+            (Number::Float { .. }, Number::Float { .. }, Some(Overflow::Float)) => true,
+            (Number::Integer(_), Number::Integer(_), Some(Overflow::Integer)) => true,
             _ => self == other,
         }
     }
@@ -212,6 +239,21 @@ impl PartialEq for Number {
 }
 
 fn parse(line: &str) -> Option<Token> {
+    match &*line.to_ascii_lowercase() {
+        "started scanner test." => return Some(Token::Start),
+        line if line.contains("float")
+            && (line.contains("out of range") || line.contains("overflow")) =>
+        {
+            return Some(Token::Overflow(Overflow::Float))
+        }
+        line if line.contains("int")
+            && (line.contains("out of range") || line.contains("overflow")) =>
+        {
+            return Some(Token::Overflow(Overflow::Integer))
+        }
+        _ => (),
+    }
+
     let (_, line) = line.split_once(':')?;
     let (r#type, line) = line.trim_start().split_once(' ')?;
     match r#type {
