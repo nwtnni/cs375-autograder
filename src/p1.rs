@@ -57,7 +57,8 @@ pub fn grade<P: AsRef<Path>>(workspace: P, verbose: bool) -> anyhow::Result<()> 
     let mut failures = 0;
 
     for (test, expected) in tests.iter().zip(&expecteds) {
-        let differences = grade_test(test, expected)?;
+        let differences = grade_test(test, expected)
+            .with_context(|| anyhow!("Failed to grade test {}", test.path().display()))?;
         let name = test.path().file_name().unwrap().to_string_lossy();
 
         match differences.is_empty() {
@@ -85,10 +86,13 @@ pub fn grade<P: AsRef<Path>>(workspace: P, verbose: bool) -> anyhow::Result<()> 
     }
 
     println!(
-        "[{}]: passed {} out of {}",
-        student.to_string_lossy(),
-        tests.len() - failures,
-        tests.len()
+        "{}",
+        Color::Blue.paint(format!(
+            "[{}]: passed {} out of {}",
+            student.to_string_lossy(),
+            tests.len() - failures,
+            tests.len()
+        ))
     );
 
     Ok(())
@@ -117,7 +121,11 @@ fn grade_test(
     let mut differences = Vec::new();
     let mut overflow = false;
 
-    for (actual, expected) in actual.trim().split('\n').zip(expected.trim().split('\n')) {
+    for (actual, expected) in actual
+        .trim_end_matches('\n')
+        .split('\n')
+        .zip(expected.trim_end_matches('\n').split('\n'))
+    {
         const STARTED: &str = "Started scanner test";
         const OVERFLOW: &str = "out of range";
 
@@ -204,29 +212,54 @@ impl PartialEq for Number {
 }
 
 fn parse(line: &str) -> Option<Token> {
-    let mut iter = line.split_whitespace().skip(1);
+    let (_, line) = line.split_once(':')?;
+    let (r#type, line) = line.trim_start().split_once(' ')?;
+    match r#type {
+        "0" => line
+            .split_whitespace()
+            .nth(1)?
+            .parse::<u16>()
+            .ok()
+            .map(Token::Operator),
+        "1" => line
+            .split_whitespace()
+            .nth(1)?
+            .parse::<u16>()
+            .ok()
+            .map(Token::Delimiter),
+        "2" => line
+            .split_whitespace()
+            .nth(1)?
+            .parse::<u16>()
+            .ok()
+            .map(Token::Reserved),
+        "3" => Some(Token::Identifier(line.to_string())),
+        "4" => Some(Token::String(line.to_string())),
+        "5" => {
+            let mut iter = line.split_whitespace();
 
-    let token = match iter.next()? {
-        "0" => Token::Operator(iter.nth(1)?.parse::<u16>().ok()?),
-        "1" => Token::Delimiter(iter.nth(1)?.parse::<u16>().ok()?),
-        "2" => Token::Reserved(iter.nth(1)?.parse::<u16>().ok()?),
-        "3" => Token::Identifier(iter.nth(1)?.to_string()),
-        "4" => Token::String(iter.nth(1)?.to_string()),
-        "5" => match iter.by_ref().nth(1)? {
-            "0" => Token::Number(Number::Integer(iter.next()?.parse().ok()?)),
-            "1" => {
-                let value = iter.next()?;
-                value.parse::<f32>().ok()?;
-                let (mantissa, exponent) = value.split_once('e')?;
-                Token::Number(Number::Float {
-                    mantissa: mantissa.parse().ok()?,
-                    exponent: exponent.parse().ok()?,
-                })
+            match iter.nth(1)? {
+                "0" => iter
+                    .next()?
+                    .parse()
+                    .ok()
+                    .map(Number::Integer)
+                    .map(Token::Number),
+                "1" => {
+                    let value = iter.next()?;
+                    value.parse::<f32>().ok()?;
+                    let (mantissa, exponent) = value.split_once('e')?;
+                    Some(Token::Number(Number::Float {
+                        mantissa: mantissa.parse().ok()?,
+                        exponent: exponent.parse().ok()?,
+                    }))
+                }
+                _ => None,
             }
-            _ => return None,
-        },
-        _ => return None,
-    };
-
-    Some(token)
+        }
+        r#type => {
+            println!("Unknown token type: {}", r#type);
+            None
+        }
+    }
 }

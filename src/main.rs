@@ -143,7 +143,7 @@ fn main() -> anyhow::Result<()> {
                     Ok(()) => (),
                     Err(error) => {
                         eprintln!("Error grading workspace: {}", workspace.display());
-                        eprintln!("{}", error);
+                        eprintln!("{:?}", error);
                     }
                 }
             }
