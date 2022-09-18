@@ -1,5 +1,3 @@
-mod p1;
-
 use std::collections::BTreeMap;
 use std::fs;
 use std::fs::File;
@@ -12,6 +10,8 @@ use std::str::FromStr;
 use anyhow::anyhow;
 use clap::Parser;
 use zip::read::ZipArchive;
+
+use cs375_autograder::p1;
 
 #[derive(Parser)]
 #[clap(about)]

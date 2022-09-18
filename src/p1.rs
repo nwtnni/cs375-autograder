@@ -1,131 +1,30 @@
-use std::env;
-use std::io::Write as _;
+use std::iter;
 use std::mem;
 use std::path::Path;
-use std::process::Command;
-use std::process::Stdio;
+use std::str;
 
-use ansi_term::Color;
 use anyhow::anyhow;
 use anyhow::Context as _;
-use difference::Changeset;
-use difference::Difference;
 use include_dir::include_dir;
 use include_dir::Dir;
 
-static TESTS: Dir = include_dir!("$CARGO_MANIFEST_DIR/test_p1");
+use crate::lex;
+
 static EXPECTEDS: Dir = include_dir!("$CARGO_MANIFEST_DIR/sample_p1");
 
 pub fn grade<P: AsRef<Path>>(workspace: P, verbose: bool) -> anyhow::Result<()> {
-    let student = workspace.as_ref().file_name().unwrap();
-
-    println!(
-        "[{}] grading in workspace {}...",
-        student.to_string_lossy(),
-        workspace.as_ref().display()
-    );
-
-    env::set_current_dir(&workspace)?;
-
-    let mut tests = TESTS.files().collect::<Vec<_>>();
-    let mut expecteds = EXPECTEDS.files().collect::<Vec<_>>();
-
-    tests.sort_by_key(|file| file.path().file_name().unwrap());
-    expecteds.sort_by_key(|file| file.path().file_name().unwrap());
-
-    match Command::new("make")
-        .arg("lexanc")
-        .spawn()
-        .context("Could not execute `make`")?
-        .wait()
-        .map_err(anyhow::Error::new)
-        .and_then(|status| {
-            if status.success() {
-                Ok(status)
-            } else {
-                Err(anyhow!(status))
-            }
-        })
-        .context("Could not execute `make lexanc`")
-    {
-        Ok(_) => (),
-        Err(error) => {
-            println!("{}", error);
-        }
-    }
-
-    let mut failures = 0;
-
-    for (test, expected) in tests.iter().zip(&expecteds) {
-        let differences = grade_test(test, expected)
-            .with_context(|| anyhow!("Failed to grade test {}", test.path().display()))?;
-        let name = test.path().file_name().unwrap().to_string_lossy();
-
-        match differences.is_empty() {
-            true if verbose => println!("- [{}]: pass", name),
-            true => (),
-            false => {
-                println!("- [{}]: fail", name);
-                failures += 1;
-            }
-        }
-
-        for difference in differences {
-            match difference {
-                difference::Difference::Same(_) => (),
-                difference::Difference::Add(added) => {
-                    print!("{}", Color::Green.paint("+ "));
-                    println!("{}", Color::Green.paint(added));
-                }
-                difference::Difference::Rem(removed) => {
-                    print!("{}", Color::Red.paint("- "));
-                    println!("{}", Color::Red.paint(removed));
-                }
-            }
-        }
-    }
-
-    println!(
-        "{}",
-        Color::Blue.paint(format!(
-            "[{}]: passed {} out of {}",
-            student.to_string_lossy(),
-            tests.len() - failures,
-            tests.len()
-        ))
-    );
-
-    Ok(())
-}
-
-fn grade_test(
-    test: &include_dir::File,
-    expected: &include_dir::File,
-) -> anyhow::Result<Vec<Difference>> {
-    let mut child = Command::new("./lexanc")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()?;
-
-    child.stdin.as_mut().unwrap().write_all(test.contents())?;
-
-    let stdout = child.wait_with_output()?.stdout;
-    let actual = String::from_utf8_lossy(&stdout);
-    let expected = expected.contents_utf8().unwrap_or_default();
-
-    if actual == expected {
-        return Ok(Vec::new());
-    }
-
-    let mut differences = Vec::new();
     let mut overflow = None;
 
-    let mut actuals = actual.trim_end_matches('\n').split('\n').peekable();
-    let mut expecteds = expected.trim_end_matches('\n').split('\n').peekable();
+    let different = move |expecteds: &mut iter::Peekable<str::Split<char>>,
+                          actuals: &mut iter::Peekable<str::Split<char>>| {
+        let expected = expecteds
+            .next()
+            .expect("[INTERNAL ERROR]: caller guarantees non-None");
 
-    while let (Some(actual), Some(expected)) = (actuals.peek().copied(), expecteds.peek().copied())
-    {
+        let actual = actuals
+            .next()
+            .expect("[INTERNAL ERROR]: caller guarantees non-None");
+
         let expected_token = parse(expected).with_context(|| {
             anyhow!(
                 "[INTERNAL ERROR]: failed to parse expected token: {}",
@@ -154,23 +53,10 @@ fn grade_test(
             (_, None) => true,
         };
 
-        if different {
-            differences.append(&mut Changeset::new(expected, actual, "\n").diffs);
-        }
+        Ok(different)
+    };
 
-        actuals.next();
-        expecteds.next();
-    }
-
-    for actual in actuals {
-        differences.append(&mut Changeset::new("", actual, "\n").diffs);
-    }
-
-    for expected in expecteds {
-        differences.append(&mut Changeset::new(expected, "", "\n").diffs);
-    }
-
-    Ok(differences)
+    lex::grade(workspace, verbose, "lexanc", &EXPECTEDS, different)
 }
 
 #[derive(Debug, PartialEq)]
