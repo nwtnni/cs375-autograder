@@ -12,6 +12,7 @@ use clap::Parser;
 use zip::read::ZipArchive;
 
 use cs375_autograder::p1;
+use cs375_autograder::p2;
 
 #[derive(Parser)]
 #[clap(about)]
@@ -46,6 +47,9 @@ enum Command {
 enum Project {
     /// Lexer (lexanc.c)
     P1,
+
+    /// Lex (lexan.l)
+    P2,
 }
 
 impl FromStr for Project {
@@ -53,6 +57,7 @@ impl FromStr for Project {
     fn from_str(project: &str) -> Result<Self, Self::Err> {
         match project {
             "1" | "p1" | "P1" => Ok(Project::P1),
+            "2" | "p2" | "P2" => Ok(Project::P2),
             _ => Err(anyhow!("Invalid project `{}`", project)),
         }
     }
@@ -135,11 +140,14 @@ fn main() -> anyhow::Result<()> {
 
         Command::Grade {
             workspaces,
-            project: Project::P1,
+            project,
             verbose,
         } => {
             for workspace in workspaces {
-                match p1::grade(&workspace, verbose) {
+                match match project {
+                    Project::P1 => p1::grade(&workspace, verbose),
+                    Project::P2 => p2::grade(&workspace, verbose),
+                } {
                     Ok(()) => (),
                     Err(error) => {
                         eprintln!("Error grading workspace: {}", workspace.display());
