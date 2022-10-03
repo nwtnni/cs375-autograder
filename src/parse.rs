@@ -117,16 +117,26 @@ fn grade_test(
     let actual = String::from_utf8_lossy(&stdout);
     let mut differences = Vec::new();
 
+    let table = table
+        .split_inclusive('\n')
+        .map(|line| line.trim_start())
+        .map(|line| line.trim_start_matches(|char: char| char.is_numeric()))
+        .map(|line| line.trim_start())
+        .collect::<String>();
+
     let actual_table = actual
         .find("Symbol table level 1")
         .and_then(|index| actual.get(index..))
         .ok_or_else(|| anyhow!("No symbol table found"))?
-        .lines()
+        .split_inclusive('\n')
         .skip(1)
         .take_while(|line| line.trim().starts_with(|char: char| char.is_numeric()))
+        .map(|line| line.trim_start())
+        .map(|line| line.trim_start_matches(|char: char| char.is_numeric()))
+        .map(|line| line.trim_start())
         .collect::<String>();
 
-    differences.append(&mut Changeset::new(table, &actual_table, "\n").diffs);
+    differences.append(&mut Changeset::new(table.trim(), actual_table.trim(), "\n").diffs);
 
     let actual_tree = actual
         .find("(program")
@@ -134,7 +144,14 @@ fn grade_test(
         .ok_or_else(|| anyhow!("No AST found"))?
         .trim();
 
-    differences.append(&mut Changeset::new(tree, actual_tree, "\n").diffs);
+    differences.append(&mut Changeset::new(tree.trim(), actual_tree, "\n").diffs);
 
-    Ok(differences)
+    if differences
+        .iter()
+        .all(|difference| matches!(difference, Difference::Same(_)))
+    {
+        Ok(Vec::new())
+    } else {
+        Ok(differences)
+    }
 }
