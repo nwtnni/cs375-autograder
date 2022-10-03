@@ -58,7 +58,7 @@ where
                 Err(anyhow!(status))
             }
         })
-        .context("Could not execute `make lexanc`")
+        .with_context(|| anyhow!("Could not execute `make {}`", target))
     {
         Ok(_) => (),
         Err(error) => {
