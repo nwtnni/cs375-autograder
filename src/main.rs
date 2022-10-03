@@ -13,6 +13,7 @@ use zip::read::ZipArchive;
 
 use cs375_autograder::p1;
 use cs375_autograder::p2;
+use cs375_autograder::p3;
 
 #[derive(Parser)]
 #[clap(about)]
@@ -50,6 +51,9 @@ enum Project {
 
     /// Lex (lexan.l)
     P2,
+
+    /// Parse (trivb.pas)
+    P3,
 }
 
 impl FromStr for Project {
@@ -58,6 +62,7 @@ impl FromStr for Project {
         match project {
             "1" | "p1" | "P1" => Ok(Project::P1),
             "2" | "p2" | "P2" => Ok(Project::P2),
+            "3" | "p3" | "P3" => Ok(Project::P3),
             _ => Err(anyhow!("Invalid project `{}`", project)),
         }
     }
@@ -147,6 +152,7 @@ fn main() -> anyhow::Result<()> {
                 match match project {
                     Project::P1 => p1::grade(&workspace, verbose),
                     Project::P2 => p2::grade(&workspace, verbose),
+                    Project::P3 => p3::grade(&workspace, verbose),
                 } {
                     Ok(()) => (),
                     Err(error) => {
