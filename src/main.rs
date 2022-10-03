@@ -20,8 +20,8 @@ use cs375_autograder::p3;
 enum Command {
     Prepare {
         /// ZIP file containing student submissions.
-        #[clap(long, default_value = "submissions.zip")]
-        submissions: PathBuf,
+        #[clap(long, default_value = "submissions.zip", use_delimiter = true)]
+        submissions: Vec<PathBuf>,
 
         /// Directory of skeleton (template) code to compile student code against.
         #[clap(long, default_value = "cs375_minimal")]
@@ -80,29 +80,34 @@ fn main() -> anyhow::Result<()> {
             fs::create_dir_all(&workspace)?;
 
             let mut workspace = workspace.canonicalize()?;
-            let mut archive = File::open(&submissions)
-                .map(BufReader::new)
-                .map(ZipArchive::new)??;
-
+            let mut archives = Vec::new();
             let mut students = BTreeMap::default();
 
-            archive
-                .file_names()
-                .filter_map(|path| {
-                    let (student, _) = path.split_once('_')?;
-                    let (name, extension) = path.rsplit_once('.')?;
-                    let (_, name) = name
-                        .trim_end_matches(|char| matches!(char, '-' | '0'..='9'))
-                        .rsplit_once('_')?;
+            for (index, archive) in submissions.iter().enumerate() {
+                let archive = File::open(&archive)
+                    .map(BufReader::new)
+                    .map(ZipArchive::new)??;
 
-                    Some((student, path, format!("{}.{}", name, extension)))
-                })
-                .for_each(|(student, path, name)| {
-                    students
-                        .entry(String::from(student))
-                        .or_insert_with(Vec::new)
-                        .push((String::from(path), name))
-                });
+                archive
+                    .file_names()
+                    .filter_map(|path| {
+                        let (student, _) = path.split_once('_')?;
+                        let (name, extension) = path.rsplit_once('.')?;
+                        let (_, name) = name
+                            .trim_end_matches(|char| matches!(char, '-' | '0'..='9'))
+                            .rsplit_once('_')?;
+
+                        Some((student, path, format!("{}.{}", name, extension)))
+                    })
+                    .for_each(|(student, path, name)| {
+                        students
+                            .entry(String::from(student))
+                            .or_insert_with(BTreeMap::new)
+                            .insert(name, (index, String::from(path)));
+                    });
+
+                archives.push(archive);
+            }
 
             let skeletons = Path::new(&skeleton)
                 .canonicalize()?
@@ -121,18 +126,19 @@ fn main() -> anyhow::Result<()> {
                     workspace.pop();
                 }
 
-                for (path, name) in paths {
+                for (name, (index, path)) in paths {
                     workspace.push(name);
 
                     eprintln!(
-                        "[{}]: copying submission {} to {}",
+                        "[{}]: copying submission {}/{} to {}",
                         student,
+                        submissions[*index].display(),
                         path,
                         workspace.display()
                     );
 
                     std::io::copy(
-                        &mut archive.by_name(path)?,
+                        &mut archives[*index].by_name(path)?,
                         &mut fs::File::create(&workspace).map(BufWriter::new)?,
                     )?;
 
