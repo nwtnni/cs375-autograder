@@ -32,31 +32,18 @@ pub(crate) fn grade<P: AsRef<Path>>(
 
     env::set_current_dir(&workspace)?;
 
-    match Command::new("make")
-        .arg("parser")
-        .spawn()
-        .context("Could not execute `make`")?
-        .wait()
-        .map_err(anyhow::Error::new)
-        .and_then(|status| {
-            if status.success() {
-                Ok(status)
-            } else {
-                Err(anyhow!(status))
-            }
-        })
-        .context("Could not execute `make parser`")
-    {
-        Ok(_) => (),
-        Err(error) => {
-            println!("{}", error);
+    let parser = match make("parser") {
+        Ok(()) => "./parser",
+        Err(_) => {
+            make("parsec")?;
+            "./parsec"
         }
-    }
+    };
 
     let mut failures = 0;
 
     for test in tests {
-        let differences = grade_test(test)
+        let differences = grade_test(parser, test)
             .with_context(|| anyhow!("Failed to grade test {}", test.path.display()))?;
         let name = test.path.file_name().unwrap().to_string_lossy();
 
@@ -98,6 +85,7 @@ pub(crate) fn grade<P: AsRef<Path>>(
 }
 
 fn grade_test(
+    parser: &str,
     Test {
         path: _,
         input,
@@ -105,7 +93,7 @@ fn grade_test(
         tree,
     }: &Test,
 ) -> anyhow::Result<Vec<Difference>> {
-    let mut child = Command::new("./parser")
+    let mut child = Command::new(parser)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -154,4 +142,17 @@ fn grade_test(
     } else {
         Ok(differences)
     }
+}
+
+fn make(rule: &str) -> anyhow::Result<()> {
+    Command::new("make")
+        .arg(rule)
+        .spawn()
+        .context("Could not execute `make`")?
+        .wait()
+        .map_err(anyhow::Error::new)
+        .and_then(|status| match status.success() {
+            true => Ok(()),
+            false => Err(anyhow!(status)),
+        })
 }
