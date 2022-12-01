@@ -14,6 +14,7 @@ use zip::read::ZipArchive;
 use cs375_autograder::p1;
 use cs375_autograder::p2;
 use cs375_autograder::p3;
+use cs375_autograder::p4;
 
 #[derive(Parser)]
 #[clap(about)]
@@ -54,6 +55,9 @@ enum Project {
 
     /// Parse (trivb.pas)
     P3,
+
+    /// Parse (graph1.pas)
+    P4,
 }
 
 impl FromStr for Project {
@@ -63,6 +67,7 @@ impl FromStr for Project {
             "1" | "p1" | "P1" => Ok(Project::P1),
             "2" | "p2" | "P2" => Ok(Project::P2),
             "3" | "p3" | "P3" => Ok(Project::P3),
+            "4" | "p4" | "P4" => Ok(Project::P4),
             _ => Err(anyhow!("Invalid project `{}`", project)),
         }
     }
@@ -159,6 +164,7 @@ fn main() -> anyhow::Result<()> {
                     Project::P1 => p1::grade(&workspace, verbose),
                     Project::P2 => p2::grade(&workspace, verbose),
                     Project::P3 => p3::grade(&workspace, verbose),
+                    Project::P4 => p4::grade(&workspace, verbose),
                 } {
                     Ok(()) => (),
                     Err(error) => {
